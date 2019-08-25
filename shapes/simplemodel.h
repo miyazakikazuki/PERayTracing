@@ -46,19 +46,19 @@
 
 namespace pbrt {
 
-STAT_MEMORY_COUNTER("Memory/SimpleModel meshes", triMeshBytes);
+//STAT_MEMORY_COUNTER("Memory/SimpleModel meshes", triMeshBytes);
 
 // Triangle Declarations
 class SimpleModel : public Shape {
   public:
     // Triangle Public Methods
     SimpleModel(const Transform *ObjectToWorld, const Transform *WorldToObject,
-             bool reverseOrientation, const std::shared_ptr<TriangleMesh> &mesh,
-             int triNumber)
-        : Shape(ObjectToWorld, WorldToObject, reverseOrientation), mesh(mesh) {
-        v = &mesh->vertexIndices[3 * triNumber];
-        triMeshBytes += sizeof(*this);
-        faceIndex = mesh->faceIndices.size() ? mesh->faceIndices[triNumber] : 0;
+             bool reverseOrientation, Float width, Float height, Float depth, Float h, 
+			int u, int v, int w)
+        : Shape(ObjectToWorld, WorldToObject, reverseOrientation), 
+        width(width),height(height),depth(depth),
+		h(h)
+		u(u),v(v), w(w)
     }
     Bounds3f ObjectBound() const;
     Bounds3f WorldBound() const;
@@ -74,43 +74,19 @@ class SimpleModel : public Shape {
     // reference point p.
     Float SolidAngle(const Point3f &p, int nSamples = 0) const;
 
+	std::vector<std::vector<std::vector<Matrix4x4>>> CalculateStress(), 
   private:
-    // Triangle Private Methods
-    void GetUVs(Point2f uv[3]) const {
-        if (mesh->uv) {
-            uv[0] = mesh->uv[v[0]];
-            uv[1] = mesh->uv[v[1]];
-            uv[2] = mesh->uv[v[2]];
-        } else {
-            uv[0] = Point2f(0, 0);
-            uv[1] = Point2f(1, 0);
-            uv[2] = Point2f(1, 1);
-        }
-    }
+	// Simplemodel Private Data
+    const Float width, height, depth;
+    const Float h;
+    const int u, v, w;
+    };
 
-    // Triangle Private Data
-    std::shared_ptr<TriangleMesh> mesh;
-    const int *v;
-    int faceIndex;
-};
-
-std::vector<std::shared_ptr<Shape>> CreateTriangleMesh(
-    const Transform *o2w, const Transform *w2o, bool reverseOrientation,
-    int nTriangles, const int *vertexIndices, int nVertices, const Point3f *p,
-    const Vector3f *s, const Normal3f *n, const Point2f *uv,
-    const std::shared_ptr<Texture<Float>> &alphaTexture,
-    const std::shared_ptr<Texture<Float>> &shadowAlphaTexture,
-    const int *faceIndices = nullptr);
 std::vector<std::shared_ptr<Shape>> CreateTriangleMeshShape(
     const Transform *o2w, const Transform *w2o, bool reverseOrientation,
     const ParamSet &params,
     std::map<std::string, std::shared_ptr<Texture<Float>>> *floatTextures =
         nullptr);
-
-bool WritePlyFile(const std::string &filename, int nTriangles,
-                  const int *vertexIndices, int nVertices, const Point3f *P,
-                  const Vector3f *S, const Normal3f *N, const Point2f *UV,
-                  const int *faceIndices);
 
 }  // namespace pbrt
 

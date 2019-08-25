@@ -127,19 +127,8 @@ bool WritePlyFile(const std::string &filename, int nTriangles,
 
 Bounds3f SimpleModel::ObjectBound() const {
     // Get triangle vertices in _p0_, _p1_, and _p2_
-    const Point3f &p0 = mesh->p[v[0]];
-    const Point3f &p1 = mesh->p[v[1]];
-    const Point3f &p2 = mesh->p[v[2]];
-    return Union(Bounds3f((*WorldToObject)(p0), (*WorldToObject)(p1)),
-                 (*WorldToObject)(p2));
-}
-
-Bounds3f SimpleModel::WorldBound() const {
-    // Get triangle vertices in _p0_, _p1_, and _p2_
-    const Point3f &p0 = mesh->p[v[0]];
-    const Point3f &p1 = mesh->p[v[1]];
-    const Point3f &p2 = mesh->p[v[2]];
-    return Union(Bounds3f(p0, p1), p2);
+    return Bounds3f(Point3f(-width/2.0, -height/2.0, -depth/2.0),
+                    Point3f(width / 2.0, height / 2.0, depth / 2.0),);
 }
 
 bool SimpleModel::Intersect(const Ray &ray, Float *tHit, SurfaceInteraction *isect,
@@ -529,13 +518,7 @@ bool SimpleModel::IntersectP(const Ray &ray, bool testAlphaTexture) const {
     return true;
 }
 
-Float SimpleModel::Area() const {
-    // Get triangle vertices in _p0_, _p1_, and _p2_
-    const Point3f &p0 = mesh->p[v[0]];
-    const Point3f &p1 = mesh->p[v[1]];
-    const Point3f &p2 = mesh->p[v[2]];
-    return 0.5 * Cross(p1 - p0, p2 - p0).Length();
-}
+Float SimpleModel::Area() const { return 2.0 * (width * height + height * depth + depth * width);}
 
 Interaction SimpleModel::Sample(const Point2f &u, Float *pdf) const {
     Point2f b = UniformSampleTriangle(u);
