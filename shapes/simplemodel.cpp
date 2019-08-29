@@ -33,102 +33,24 @@
 // shapes/triangle.cpp*
 #include <array>
 #include "efloat.h"
-#include "ext/rply.h"
 #include "paramset.h"
 #include "sampling.h"
 #include "shapes/simplemodel.h"
-#include "texture.h"
 #include "textures/constant.h"
+
 
 namespace pbrt {
 STAT_PERCENT("Intersections/Ray-triangle intersection tests", nHits, nTests);
 
-// Triangle Local Definitions
-static void PlyErrorCallback(p_ply, const char *message) {
-    Error("PLY writing error: %s", message);
-}
+
 
 // Triangle Method Definitions
 STAT_RATIO("Scene/Triangles per triangle mesh", nTris, nMeshes);
 
-std::vector<std::shared_ptr<Shape>> CreateTriangleMesh(
-    const Transform *ObjectToWorld, const Transform *WorldToObject,
-    bool reverseOrientation, int nTriangles, const int *vertexIndices,
-    int nVertices, const Point3f *p, const Vector3f *s, const Normal3f *n,
-    const Point2f *uv, const std::shared_ptr<Texture<Float>> &alphaMask,
-    const std::shared_ptr<Texture<Float>> &shadowAlphaMask,
-    const int *faceIndices) {
-    std::shared_ptr<TriangleMesh> mesh = std::make_shared<TriangleMesh>(
-        *ObjectToWorld, nTriangles, vertexIndices, nVertices, p, s, n, uv,
-        alphaMask, shadowAlphaMask, faceIndices);
-    std::vector<std::shared_ptr<Shape>> tris;
-    tris.reserve(nTriangles);
-    for (int i = 0; i < nTriangles; ++i)
-        tris.push_back(std::make_shared<Triangle>(ObjectToWorld, WorldToObject,
-                                                  reverseOrientation, mesh, i));
-    return tris;
-}
-
-bool WritePlyFile(const std::string &filename, int nTriangles,
-                  const int *vertexIndices, int nVertices, const Point3f *P,
-                  const Vector3f *S, const Normal3f *N, const Point2f *UV,
-                  const int *faceIndices) {
-    p_ply plyFile =
-        ply_create(filename.c_str(), PLY_DEFAULT, PlyErrorCallback, 0, nullptr);
-    if (plyFile == nullptr) return false;
-
-    ply_add_element(plyFile, "vertex", nVertices);
-    ply_add_scalar_property(plyFile, "x", PLY_FLOAT);
-    ply_add_scalar_property(plyFile, "y", PLY_FLOAT);
-    ply_add_scalar_property(plyFile, "z", PLY_FLOAT);
-    if (N) {
-        ply_add_scalar_property(plyFile, "nx", PLY_FLOAT);
-        ply_add_scalar_property(plyFile, "ny", PLY_FLOAT);
-        ply_add_scalar_property(plyFile, "nz", PLY_FLOAT);
-    }
-    if (UV) {
-        ply_add_scalar_property(plyFile, "u", PLY_FLOAT);
-        ply_add_scalar_property(plyFile, "v", PLY_FLOAT);
-    }
-    if (S)
-        Warning("%s: PLY mesh will be missing tangent vectors \"S\".",
-                filename.c_str());
-
-    ply_add_element(plyFile, "face", nTriangles);
-    ply_add_list_property(plyFile, "vertex_indices", PLY_UINT8, PLY_INT);
-    if (faceIndices) ply_add_scalar_property(plyFile, "face_indices", PLY_INT);
-    ply_write_header(plyFile);
-
-    for (int i = 0; i < nVertices; ++i) {
-        ply_write(plyFile, P[i].x);
-        ply_write(plyFile, P[i].y);
-        ply_write(plyFile, P[i].z);
-        if (N) {
-            ply_write(plyFile, N[i].x);
-            ply_write(plyFile, N[i].y);
-            ply_write(plyFile, N[i].z);
-        }
-        if (UV) {
-            ply_write(plyFile, UV[i].x);
-            ply_write(plyFile, UV[i].y);
-        }
-    }
-
-    for (int i = 0; i < nTriangles; ++i) {
-        ply_write(plyFile, 3);
-        ply_write(plyFile, vertexIndices[3 * i]);
-        ply_write(plyFile, vertexIndices[3 * i + 1]);
-        ply_write(plyFile, vertexIndices[3 * i + 2]);
-        if (faceIndices) ply_write(plyFile, faceIndices[i]);
-    }
-    ply_close(plyFile);
-    return true;
-}
-
 Bounds3f SimpleModel::ObjectBound() const {
     // Get triangle vertices in _p0_, _p1_, and _p2_
     return Bounds3f(Point3f(-width/2.0, -height/2.0, -depth/2.0),
-                    Point3f(width / 2.0, height / 2.0, depth / 2.0),);
+                    Point3f(width / 2.0, height / 2.0, depth / 2.0));
 }
 
 bool SimpleModel::Intersect(const Ray &ray, Float *tHit, SurfaceInteraction *isect,
@@ -136,9 +58,9 @@ bool SimpleModel::Intersect(const Ray &ray, Float *tHit, SurfaceInteraction *ise
     ProfilePhase p(Prof::TriIntersect);
     ++nTests;
     // Get triangle vertices in _p0_, _p1_, and _p2_
-    const Point3f &p0 = mesh->p[v[0]];
-    const Point3f &p1 = mesh->p[v[1]];
-    const Point3f &p2 = mesh->p[v[2]];
+    const Point3f &p0 = mesh->p[_v[0]];
+    const Point3f &p1 = mesh->p[_v[1]];
+    const Point3f &p2 = mesh->p[_v[2]];
 
     // Perform ray--triangle intersection test
 
@@ -296,7 +218,7 @@ bool SimpleModel::Intersect(const Ray &ray, Float *tHit, SurfaceInteraction *ise
         // Compute shading normal _ns_ for triangle
         Normal3f ns;
         if (mesh->n) {
-            ns = (b0 * mesh->n[v[0]] + b1 * mesh->n[v[1]] + b2 * mesh->n[v[2]]);
+            ns = (b0 * mesh->n[_v[0]] + b1 * mesh->n[_v[1]] + b2 * mesh->n[_v[2]]);
             if (ns.LengthSquared() > 0)
                 ns = Normalize(ns);
             else
@@ -307,7 +229,7 @@ bool SimpleModel::Intersect(const Ray &ray, Float *tHit, SurfaceInteraction *ise
         // Compute shading tangent _ss_ for triangle
         Vector3f ss;
         if (mesh->s) {
-            ss = (b0 * mesh->s[v[0]] + b1 * mesh->s[v[1]] + b2 * mesh->s[v[2]]);
+            ss = (b0 * mesh->s[_v[0]] + b1 * mesh->s[_v[1]] + b2 * mesh->s[_v[2]]);
             if (ss.LengthSquared() > 0)
                 ss = Normalize(ss);
             else
@@ -329,8 +251,8 @@ bool SimpleModel::Intersect(const Ray &ray, Float *tHit, SurfaceInteraction *ise
             // Compute deltas for triangle partial derivatives of normal
             Vector2f duv02 = uv[0] - uv[2];
             Vector2f duv12 = uv[1] - uv[2];
-            Normal3f dn1 = mesh->n[v[0]] - mesh->n[v[2]];
-            Normal3f dn2 = mesh->n[v[1]] - mesh->n[v[2]];
+            Normal3f dn1 = mesh->n[_v[0]] - mesh->n[_v[2]];
+            Normal3f dn2 = mesh->n[_v[1]] - mesh->n[_v[2]];
             Float determinant = duv02[0] * duv12[1] - duv02[1] * duv12[0];
             bool degenerateUV = std::abs(determinant) < 1e-8;
             if (degenerateUV) {
@@ -340,8 +262,8 @@ bool SimpleModel::Intersect(const Ray &ray, Float *tHit, SurfaceInteraction *ise
                 // (rather than giving up) so that ray differentials for
                 // rays reflected from triangles with degenerate
                 // parameterizations are still reasonable.
-                Vector3f dn = Cross(Vector3f(mesh->n[v[2]] - mesh->n[v[0]]),
-                                    Vector3f(mesh->n[v[1]] - mesh->n[v[0]]));
+                Vector3f dn = Cross(Vector3f(mesh->n[_v[2]] - mesh->n[_v[0]]),
+                                    Vector3f(mesh->n[_v[1]] - mesh->n[_v[0]]));
                 if (dn.LengthSquared() == 0)
                     dndu = dndv = Normal3f(0, 0, 0);
                 else {
@@ -374,9 +296,9 @@ bool SimpleModel::IntersectP(const Ray &ray, bool testAlphaTexture) const {
     ProfilePhase p(Prof::TriIntersectP);
     ++nTests;
     // Get triangle vertices in _p0_, _p1_, and _p2_
-    const Point3f &p0 = mesh->p[v[0]];
-    const Point3f &p1 = mesh->p[v[1]];
-    const Point3f &p2 = mesh->p[v[2]];
+    const Point3f &p0 = mesh->p[_v[0]];
+    const Point3f &p1 = mesh->p[_v[1]];
+    const Point3f &p2 = mesh->p[_v[2]];
 
     // Perform ray--triangle intersection test
 
@@ -518,14 +440,19 @@ bool SimpleModel::IntersectP(const Ray &ray, bool testAlphaTexture) const {
     return true;
 }
 
-Float SimpleModel::Area() const { return 2.0 * (width * height + height * depth + depth * width);}
+Float SimpleModel::Area() const { 
+	const Point3f &p0 = mesh->p[_v[0]];
+    const Point3f &p1 = mesh->p[_v[1]];
+    const Point3f &p2 = mesh->p[_v[2]];
+    return 0.5 * Cross(p1 - p0, p2 - p0).Length();
+}
 
 Interaction SimpleModel::Sample(const Point2f &u, Float *pdf) const {
     Point2f b = UniformSampleTriangle(u);
     // Get triangle vertices in _p0_, _p1_, and _p2_
-    const Point3f &p0 = mesh->p[v[0]];
-    const Point3f &p1 = mesh->p[v[1]];
-    const Point3f &p2 = mesh->p[v[2]];
+    const Point3f &p0 = mesh->p[_v[0]];
+    const Point3f &p1 = mesh->p[_v[1]];
+    const Point3f &p2 = mesh->p[_v[2]];
     Interaction it;
     it.p = b[0] * p0 + b[1] * p1 + (1 - b[0] - b[1]) * p2;
     // Compute surface normal for sampled point on triangle
@@ -533,8 +460,8 @@ Interaction SimpleModel::Sample(const Point2f &u, Float *pdf) const {
     // Ensure correct orientation of the geometric normal; follow the same
     // approach as was used in SimpleModel::Intersect().
     if (mesh->n) {
-        Normal3f ns(b[0] * mesh->n[v[0]] + b[1] * mesh->n[v[1]] +
-                    (1 - b[0] - b[1]) * mesh->n[v[2]]);
+        Normal3f ns(b[0] * mesh->n[_v[0]] + b[1] * mesh->n[_v[1]] +
+                    (1 - b[0] - b[1]) * mesh->n[_v[2]]);
         it.n = Faceforward(it.n, ns);
     } else if (reverseOrientation ^ transformSwapsHandedness)
         it.n *= -1;
@@ -546,7 +473,7 @@ Interaction SimpleModel::Sample(const Point2f &u, Float *pdf) const {
     *pdf = 1 / Area();
     return it;
 }
-
+/*
 Float SimpleModel::SolidAngle(const Point3f &p, int nSamples) const {
     // Project the vertices into the unit sphere around p.
     std::array<Vector3f, 3> pSphere = {Normalize(mesh->p[v[0]] - p),
@@ -581,16 +508,181 @@ Float SimpleModel::SolidAngle(const Point3f &p, int nSamples) const {
     return std::abs(std::acos(Clamp(Dot(cross01, -cross12), -1, 1)) +
                     std::acos(Clamp(Dot(cross12, -cross20), -1, 1)) +
                     std::acos(Clamp(Dot(cross20, -cross01), -1, 1)) - Pi);
+}*/
+std::vector<std::vector<std::vector<Matrix4x4>>> SimpleModel::CalculateStress(
+	const int u,
+    const int v,
+    const int w) {
+    std::vector<Point3f> vertices; 
+	for (int i = 0; i < u; i++) {
+        for (int j = 0; j < v; i++) {
+                for (int k = 0; k < w; i++) {
+                vertices.push_back(Point3f(i, j, k));
+            }
+        }
+    }
+
+    /*foreach(Vector3 vertex in vertices) {
+            Debug.Log(vertex.x);
+            Debug.Log(vertex.y);
+            Debug.Log(vertex.z);
+    }*/
+
+    std::vector<std::vector<int>> indices;
+    std::vector<int> verticesIndices;
+    int kuv, uv = u * v, ju;
+    for (int i = 0; i < u; i++) {
+        for (int j = 0; j < v; j++) {
+            ju = j * u;
+            for (int k = 0; k < w; k++, verticesIndices = {}) {
+                kuv = k * u * v;
+                verticesIndices.push_back(kuv + ju + i);
+                verticesIndices.push_back(kuv + ju + i + 1);
+                verticesIndices.push_back(kuv + ju + i + u);
+                verticesIndices.push_back(kuv + ju + i + u + 1);
+                verticesIndices.push_back(kuv + ju + i + uv);
+                verticesIndices.push_back(kuv + ju + i + uv + 1);
+                verticesIndices.push_back(kuv + ju + i + uv + u);
+                verticesIndices.push_back(kuv + ju + i + uv + u + 1);
+            }
+            indices.push_back(verticesIndices);
+        }
+    }
+    
+    /*
+    foreach (int[] index in indices) {
+            Debug.Log(index[0]);
+            Debug.Log(index[1]);
+            Debug.Log(index[2]);
+    }*/
+
+    int E = 100;   // ヤング率
+    Float Nu = 0.5;  // ポアソン比
+    Float _Nu = 1 - Nu * Nu;
+    Float G = E / (2 * (1.0 - Nu));  // せん断弾性係数
+    Float delta = 0.5;
+    Float a1, a2, a3, b1, b2, b3, c1, c2, c3;
+    Float x1, x2, x3, y1, y2, y3;
+
+    std::vector<std::vector<Float>> D = {{E / _Nu, Nu * E / _Nu, 0.0},
+                    {Nu * E / _Nu, E / _Nu, 0.0},
+                    {0.0, 0.0, G}};
+    std::vector<std::vector<Float>> B, BT, tmp, K;
+    std::vector<Float> F;
+
+	std::vector<std::vector<std::vector<Matrix4x4>>> result;
+	
+	Float a = -sqrtf(1.0f / 3.0f), b = sqrtf(1.0f / 3.0f);
+
+	std::vector<Vector3f> r = {
+            Vector3f(a, a, a),
+            Vector3f(a, b, a),
+            Vector3f(b, a, a),
+            Vector3f(b, b, a), 
+			Vector3f(a, a, b), 
+			Vector3f(a, b, b), 
+			Vector3f(b, a, b), 
+			Vector3f(b, b, b)
+        };
+  
+	std::vector<Vector3f> dNdr;
+	
+	for (int i = 0; i < 8; i++) {
+		
+        }
+
+
+
+    for (auto index : indices) {
+        
+
+        // 要素剛性マトリクスの計算
+        for (int i = 0; i < 6; i++) {
+            for (int j = 0; j < 3; j++) {
+                for (int _k = 0; _k < 3; _k++) {
+                    tmp[i, j] += BT[i, _k] * D[_k, j];
+                }
+            }
+        }
+
+        for (int i = 0; i < 6; i++) {
+            for (int j = 0; j < 6; j++) {
+                for (int _k = 0; _k < 3; _k++) {
+                    k[i, j] += tmp[i, _k] * B[_k, j];
+                }
+            }
+        }
+
+        // 全体剛性マトリクスの導出
+        for (int i = 0; i < 6; i++) {
+            for (int j = 0; j < 6; j++) {
+                // Debug.Log(2 * index[i / 2] + i % 2);
+                // Debug.Log(2 * index[j / 2] + j % 2);
+                K[2 * index[i / 2] + i % 2, 2 * index[j / 2] + j % 2] = k[i, j];
+            }
+        }
+        // Debug.Log("Loop_End");
+    }
+
+    int[] pos_index = new int[2];
+    // 全体荷重ベクトルの計算
+    for (int i = 0; i < pos.Length; i++) {
+        pos_index[0] = (int)pos[i].x * (div - 1);
+        pos_index[1] = (int)pos[i].y * (div - 1);
+
+        F[2 * (pos_index[0] * div + pos_index[1])] = stress[i].x;
+        F[2 * (pos_index[0] * div + pos_index[1]) + 1] = stress[i].y;
+    }
+
+    /*foreach (double element in K)
+    {
+            Debug.Log(element);
+    }*/
+    LUDecomposition lud = new LUDecomposition();
+
+    double[] solutionX = new double[2 * div * div];
+    solutionX = lud.Solve(K, F, 2 * div * div);
+    Debug.Log("Start");
+    lud.WriteVector(solutionX);
+    return result;
 }
 
-std::vector<std::shared_ptr<Shape>> CreateTriangleMeshShape(
-    const Transform *o2w, const Transform *w2o, bool reverseOrientation,
+std::vector<std::shared_ptr<Shape>> CreateSimpleModelShape(
+    const Transform *o2w,
+    const Transform *w2o,
+    bool reverseOrientation,
     const ParamSet &params,
     std::map<std::string, std::shared_ptr<Texture<Float>>> *floatTextures) {
-    int nvi, npi, nuvi, nsi, nni;
-    const int *vi = params.FindInt("indices", &nvi);
-    const Point3f *P = params.FindPoint3f("P", &npi);
-    const Point2f *uvs = params.FindPoint2f("uv", &nuvi);
+    
+	int nvi, npi, nuvi, nsi, nni;
+
+    Float width = params.FindOneFloat("width", 1.0);
+    Float height = params.FindOneFloat("height", 1.0);
+    Float depth = params.FindOneFloat("depth", 1.0);
+    Float h = params.FindOneFloat("h", 0.1);
+    int u = params.FindOneFloat("u", (int)width / h);
+    int v = params.FindOneFloat("v", (int)height / h);
+    int w = params.FindOneFloat("w", (int)depth / h);
+    const int nTriangles = 12;
+    const int vertexIndices[3 * nTriangles] = {
+        0, 1, 2,
+		0, 2, 3,
+		1, 5, 6,
+		1, 6, 2,
+		5, 4, 7,
+		5, 7, 6,
+        4, 0, 3,
+		4, 3, 7,
+		0, 5, 1,
+		0, 4, 5,
+		3, 2, 6,
+		3, 6, 7
+	};
+    const int nVertices = 8;
+
+	const int *vi = params.FindInt("indices", &nvi);
+	const Point3f *P = params.FindPoint3f("P", &npi);
+	const Point2f *uvs = params.FindPoint2f("uv", &nuvi);
     if (!uvs) uvs = params.FindPoint2f("st", &nuvi);
     std::vector<Point2f> tempUVs;
     if (!uvs) {
@@ -677,8 +769,8 @@ std::vector<std::shared_ptr<Shape>> CreateTriangleMeshShape(
     } else if (params.FindOneFloat("shadowalpha", 1.f) == 0.f)
         shadowAlphaTex.reset(new ConstantTexture<Float>(0.f));
 
-    return CreateTriangleMesh(o2w, w2o, reverseOrientation, nvi / 3, vi, npi, P,
-                              S, N, uvs, alphaTex, shadowAlphaTex, faceIndices);
+    return CreateTriangleMesh(o2w, w2o, reverseOrientation, nTriangles, vertexIndices, nVertices,
+		 P, S, N, uvs, alphaTex, shadowAlphaTex, faceIndices);
 }
 
 }  // namespace pbrt

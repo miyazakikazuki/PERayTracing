@@ -41,27 +41,35 @@
 // shapes/simplemodel.h*
 #include <map>
 #include "shape.h"
-#include "stats.h"
 #include "triangle.h"
+#include "stats.h"
 
 namespace pbrt {
 
-//STAT_MEMORY_COUNTER("Memory/SimpleModel meshes", triMeshBytes);
+ STAT_MEMORY_COUNTER("Memory/SimpleModel meshes", triMeshBytes);
 
-// Triangle Declarations
+// SimpleModel Declarations
 class SimpleModel : public Shape {
   public:
-    // Triangle Public Methods
+    // SimpleModel Public Methods
     SimpleModel(const Transform *ObjectToWorld, const Transform *WorldToObject,
-             bool reverseOrientation, Float width, Float height, Float depth, Float h, 
-			int u, int v, int w)
-        : Shape(ObjectToWorld, WorldToObject, reverseOrientation), 
-        width(width),height(height),depth(depth),
-		h(h)
-		u(u),v(v), w(w)
+                bool reverseOrientation, Float width, Float height, Float depth,
+                Float h, int u, int v, int w,
+                std::shared_ptr<TriangleMesh> &mesh)
+        : Shape(ObjectToWorld, WorldToObject, reverseOrientation),
+          width(width),
+          height(height),
+          depth(depth),
+          h(h),
+          u(u),
+          v(v),
+          w(w),
+          mesh(mesh) {
+        _v = &mesh->vertexIndices[3 * 12];
+        triMeshBytes += sizeof(*this);
+        faceIndex = mesh->faceIndices.size() ? mesh->faceIndices[12] : 0;
     }
     Bounds3f ObjectBound() const;
-    Bounds3f WorldBound() const;
     bool Intersect(const Ray &ray, Float *tHit, SurfaceInteraction *isect,
                    bool testAlphaTexture = true) const;
     bool IntersectP(const Ray &ray, bool testAlphaTexture = true) const;
@@ -72,22 +80,39 @@ class SimpleModel : public Shape {
 
     // Returns the solid angle subtended by the triangle w.r.t. the given
     // reference point p.
-    Float SolidAngle(const Point3f &p, int nSamples = 0) const;
+    // Float SolidAngle(const Point3f &p, int nSamples = 0) const;
 
-	std::vector<std::vector<std::vector<Matrix4x4>>> CalculateStress(), 
+    std::vector<std::vector<std::vector<Matrix4x4>>> CalculateStress(
+		const int u, const int v, const int w);
+
   private:
-	// Simplemodel Private Data
+    // SimpleModel Private Methods
+    void GetUVs(Point2f uv[3]) const {
+        if (mesh->uv) {
+            uv[0] = mesh->uv[_v[0]];
+            uv[1] = mesh->uv[_v[1]];
+            uv[2] = mesh->uv[_v[2]];
+        } else {
+            uv[0] = Point2f(0, 0);
+            uv[1] = Point2f(1, 0);
+            uv[2] = Point2f(1, 1);
+        }
+    }
+    // Simplemodel Private Data
     const Float width, height, depth;
     const Float h;
     const int u, v, w;
-    };
+    const std::shared_ptr<TriangleMesh> mesh;
+    const int *_v;
+    int faceIndex;
+};
 
-std::vector<std::shared_ptr<Shape>> CreateTriangleMeshShape(
-    const Transform *o2w, const Transform *w2o, bool reverseOrientation,
+std::vector<std::shared_ptr<Shape>> CreateSimpleModelShape(
+    const Transform *o2w,
+    const Transform *w2o,
+    bool reverseOrientation,
     const ParamSet &params,
-    std::map<std::string, std::shared_ptr<Texture<Float>>> *floatTextures =
-        nullptr);
-
+    std::map<std::string, std::shared_ptr<Texture<Float>>> *floatTextures);
 }  // namespace pbrt
 
 #endif  // PBRT_SHAPES_SIMPLEMODEL_H
