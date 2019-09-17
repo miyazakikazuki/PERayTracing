@@ -31,30 +31,28 @@
  */
 
 // shapes/triangle.cpp*
+#include "shapes/simplemodel.h"
 #include <array>
 #include "efloat.h"
 #include "paramset.h"
 #include "sampling.h"
-#include "shapes/simplemodel.h"
 #include "textures/constant.h"
-
 
 namespace pbrt {
 STAT_PERCENT("Intersections/Ray-triangle intersection tests", nHits, nTests);
-
-
 
 // Triangle Method Definitions
 STAT_RATIO("Scene/Triangles per triangle mesh", nTris, nMeshes);
 
 Bounds3f SimpleModel::ObjectBound() const {
     // Get triangle vertices in _p0_, _p1_, and _p2_
-    return Bounds3f(Point3f(-width/2.0, -height/2.0, -depth/2.0),
+    return Bounds3f(Point3f(-width / 2.0, -height / 2.0, -depth / 2.0),
                     Point3f(width / 2.0, height / 2.0, depth / 2.0));
 }
 
-bool SimpleModel::Intersect(const Ray &ray, Float *tHit, SurfaceInteraction *isect,
-                         bool testAlphaTexture) const {
+bool SimpleModel::Intersect(const Ray &ray, Float *tHit,
+                            SurfaceInteraction *isect,
+                            bool testAlphaTexture) const {
     ProfilePhase p(Prof::TriIntersect);
     ++nTests;
     // Get triangle vertices in _p0_, _p1_, and _p2_
@@ -218,7 +216,8 @@ bool SimpleModel::Intersect(const Ray &ray, Float *tHit, SurfaceInteraction *ise
         // Compute shading normal _ns_ for triangle
         Normal3f ns;
         if (mesh->n) {
-            ns = (b0 * mesh->n[_v[0]] + b1 * mesh->n[_v[1]] + b2 * mesh->n[_v[2]]);
+            ns = (b0 * mesh->n[_v[0]] + b1 * mesh->n[_v[1]] +
+                  b2 * mesh->n[_v[2]]);
             if (ns.LengthSquared() > 0)
                 ns = Normalize(ns);
             else
@@ -229,7 +228,8 @@ bool SimpleModel::Intersect(const Ray &ray, Float *tHit, SurfaceInteraction *ise
         // Compute shading tangent _ss_ for triangle
         Vector3f ss;
         if (mesh->s) {
-            ss = (b0 * mesh->s[_v[0]] + b1 * mesh->s[_v[1]] + b2 * mesh->s[_v[2]]);
+            ss = (b0 * mesh->s[_v[0]] + b1 * mesh->s[_v[1]] +
+                  b2 * mesh->s[_v[2]]);
             if (ss.LengthSquared() > 0)
                 ss = Normalize(ss);
             else
@@ -440,8 +440,8 @@ bool SimpleModel::IntersectP(const Ray &ray, bool testAlphaTexture) const {
     return true;
 }
 
-Float SimpleModel::Area() const { 
-	const Point3f &p0 = mesh->p[_v[0]];
+Float SimpleModel::Area() const {
+    const Point3f &p0 = mesh->p[_v[0]];
     const Point3f &p1 = mesh->p[_v[1]];
     const Point3f &p2 = mesh->p[_v[2]];
     return 0.5 * Cross(p1 - p0, p2 - p0).Length();
@@ -510,13 +510,11 @@ Float SimpleModel::SolidAngle(const Point3f &p, int nSamples) const {
                     std::acos(Clamp(Dot(cross20, -cross01), -1, 1)) - Pi);
 }*/
 std::vector<std::vector<std::vector<Matrix4x4>>> SimpleModel::CalculateStress(
-	const int u,
-    const int v,
-    const int w) {
-    std::vector<Point3f> vertices; 
-	for (int i = 0; i < u; i++) {
-        for (int j = 0; j < v; i++) {
-                for (int k = 0; k < w; i++) {
+    const int u, const int v, const int w) {
+    std::vector<Point3f> vertices;
+    for (int i = 0; i < u; i++) {
+        for (int j = 0; j < v; j++) {
+            for (int k = 0; k < w; k++) {
                 vertices.push_back(Point3f(i, j, k));
             }
         }
@@ -548,80 +546,352 @@ std::vector<std::vector<std::vector<Matrix4x4>>> SimpleModel::CalculateStress(
             indices.push_back(verticesIndices);
         }
     }
-    
+
     /*
     foreach (int[] index in indices) {
             Debug.Log(index[0]);
             Debug.Log(index[1]);
             Debug.Log(index[2]);
     }*/
+    Float a = -sqrtf(1.0f / 3.0f), b = sqrtf(1.0f / 3.0f);
 
-    int E = 100;   // ヤング率
+    std::vector<Vector3f> r = {Vector3f(a, a, a), Vector3f(a, b, a),
+                               Vector3f(b, a, a), Vector3f(b, b, a),
+                               Vector3f(a, a, b), Vector3f(a, b, b),
+                               Vector3f(b, a, b), Vector3f(b, b, b)};
+    int E = 100;     // ヤング率
     Float Nu = 0.5;  // ポアソン比
     Float _Nu = 1 - Nu * Nu;
     Float G = E / (2 * (1.0 - Nu));  // せん断弾性係数
     Float delta = 0.5;
-    Float a1, a2, a3, b1, b2, b3, c1, c2, c3;
-    Float x1, x2, x3, y1, y2, y3;
 
-    std::vector<std::vector<Float>> D = {{E / _Nu, Nu * E / _Nu, 0.0},
-                    {Nu * E / _Nu, E / _Nu, 0.0},
-                    {0.0, 0.0, G}};
-    std::vector<std::vector<Float>> B, BT, tmp, K;
+    Float onemNu = 1 - Nu;
+    Float onem2Nu = 1 - 2 * Nu;
+    Float onepNu = 1 + Nu;
+    Float EdopNuom2Nu = E / (onepNu * onem2Nu);
+    Float c = onemNu * EdopNuom2Nu;
+    Float d = Nu * EdopNuom2Nu;
+    Float e = onem2Nu / 2.0 * EdopNuom2Nu;
+
+    std::vector<std::vector<Float>> D = {
+        {c, d, d, 0.0, 0.0, 0.0},     {d, c, d, 0.0, 0.0, 0.0},
+        {d, d, c, 0.0, 0.0, 0.0},     {0.0, 0.0, 0.0, e, 0.0, 0.0},
+        {0.0, 0.0, 0.0, 0.0, e, 0.0}, {0.0, 0.0, 0.0, 0.0, 0.0, e}};
+
     std::vector<Float> F;
+    std::vector<std::vector<std::vector<Matrix4x4>>> result;
+    std::vector<Float> N, dNdr1, dNdr2, dNdr3;
+    Float r1, r2, r3, r1p, r2p, r3p, r1m, r2m, r3m;
+    Float xg[2] = {-1.0f / sqrtf(3.0), 1.0 / sqrtf(3.0)};
+    for (std::vector<int> index : indices) {
+        for (int i = 0; i < 2; i++) {
+            r1 = xg[i];
+            for (int j = 0; j < 2; i++) {
+                r2 = xg[j];
+                for (int _k = 0; _k < 2; _k++) {
+                    r3 = xg[_k];
+                    r1p = 1 + r1;
+                    r2p = 1 + r2;
+                    r3p = 1 + r3;
+                    r1m = 1 - r1;
+                    r2m = 1 - r2;
+                    r3m = 1 - r3;
+                    // interpolation function
+                    N[0] = r1m * r2m * r3m / 8.0;
+                    N[1] = r1p * r2m * r3m / 8.0;
+                    N[2] = r1p * r2p * r3m / 8.0;
+                    N[3] = r1m * r2p * r3m / 8.0;
+                    N[4] = r1m * r2m * r3p / 8.0;
+                    N[5] = r1p * r2m * r3p / 8.0;
+                    N[6] = r1p * r2p * r3p / 8.0;
+                    N[7] = r1m * r2p * r3p / 8.0;
+                    // derivative of interpolation function for r1
+                    dNdr1[0] = -r2m * r3m / 8.0;
+                    dNdr1[1] = r2m * r3m / 8.0;
+                    dNdr1[2] = r2p * r3m / 8.0;
+                    dNdr1[3] = -r2p * r3m / 8.0;
+                    dNdr1[4] = -r2m * r3p / 8.0;
+                    dNdr1[5] = r2m * r3p / 8.0;
+                    dNdr1[6] = r2p * r3p / 8.0;
+                    dNdr1[7] = -r2p * r3p / 8.0;
+                    // derivative of interpolation function for r2
+                    dNdr2[0] = -r1m * r3m / 8.0;
+                    dNdr2[1] = -r1m * r3m / 8.0;
+                    dNdr2[2] = r1p * r3m / 8.0;
+                    dNdr2[3] = r1p * r3m / 8.0;
+                    dNdr2[4] = -r1m * r3p / 8.0;
+                    dNdr2[5] = -r1m * r3p / 8.0;
+                    dNdr2[6] = r1p * r3p / 8.0;
+                    dNdr2[7] = r1p * r3p / 8.0;
+                    // derivative of interpolation function for r3
+                    dNdr1[0] = -r2m * r1m / 8.0;
+                    dNdr1[1] = -r2m * r1m / 8.0;
+                    dNdr1[2] = -r2p * r1m / 8.0;
+                    dNdr1[3] = -r2p * r1m / 8.0;
+                    dNdr1[4] = r2m * r1p / 8.0;
+                    dNdr1[5] = r2m * r1p / 8.0;
+                    dNdr1[6] = r2p * r1p / 8.0;
+                    dNdr1[7] = r2p * r1p / 8.0;
+                    // Jacobi Matrix
+                    std::vector<std::vector<Float>> J = {
+                        {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}};
+                    for (int l = 0; l < 8; l++) {
+                        J[0][0] += dNdr1[l] * vertices[index[l]][0];
+                        J[0][1] += dNdr1[l] * vertices[index[l]][1];
+                        J[0][2] += dNdr1[l] * vertices[index[l]][2];
+                        J[1][0] += dNdr1[l] * vertices[index[l]][0];
+                        J[1][1] += dNdr1[l] * vertices[index[l]][1];
+                        J[1][2] += dNdr1[l] * vertices[index[l]][2];
+                        J[2][0] += dNdr1[l] * vertices[index[l]][0];
+                        J[2][1] += dNdr1[l] * vertices[index[l]][1];
+                        J[2][2] += dNdr1[l] * vertices[index[l]][2];
+                    }
+                    // inverse matrix to J
+                    std::vector<std::vector<Float>> invJ;
 
-	std::vector<std::vector<std::vector<Matrix4x4>>> result;
-	
-	Float a = -sqrtf(1.0f / 3.0f), b = sqrtf(1.0f / 3.0f);
+                    for (int l = 0; l < 3; l++) {
+                        for (int m = 0; m < 3; m++) {
+                            invJ[l][m] = (l == m) ? 1.0 : 0.0;
+                        }
+                    }
+                    Float buf;
+                    std::vector<std::vector<Float>> tmpJ = {
+                        {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}};
+                    for (int l = 0; l < 3; l++) {
+                        for (int m = 0; m < 3; m++) {
+                            tmpJ[l][m] = J[l][m];
+                        }
+                    }
 
-	std::vector<Vector3f> r = {
-            Vector3f(a, a, a),
-            Vector3f(a, b, a),
-            Vector3f(b, a, a),
-            Vector3f(b, b, a), 
-			Vector3f(a, a, b), 
-			Vector3f(a, b, b), 
-			Vector3f(b, a, b), 
-			Vector3f(b, b, b)
+                    for (int l = 0; l < 3; l++) {
+                        buf = 1 / tmpJ[l][l];
+                        for (int m = 0; m < 3; m++) {
+                            tmpJ[l][m] *= buf;
+                            invJ[l][m] *= buf;
+                        }
+                        for (int m = 0; m < 3; m++) {
+                            if (l != m) {
+                                buf = tmpJ[m][l];
+                                for (int n = 0; n < 3; n++) {
+                                    tmpJ[m][n] -= tmpJ[l][n] * buf;
+                                    invJ[m][n] -= invJ[l][n] * buf;
+                                }
+                            }
+                        }
+                    }
+                    // determinant of J
+                    Float det = 0.0;
+                    det = J[0][0] * J[1][1] * J[2][2] +
+                          J[1][0] * J[2][1] * J[0][2] +
+                          J[2][0] * J[0][1] * J[1][2] -
+                          J[2][0] * J[1][1] * J[0][2] -
+                          J[1][0] * J[0][1] * J[2][2] -
+                          J[0][0] * J[2][1] * J[1][2];
+
+                    // B and its transpose matrix
+                    std::vector<std::vector<Float>> B(6,
+                                                      std::vector<Float>(24));
+                    std::vector<std::vector<Float>> BT(24,
+                                                       std::vector<Float>(6));
+
+                    for (int l = 0; l < 8; l++) {
+                        Float dNdx = invJ[0][0] * dNdr1[l] +
+                                     invJ[0][1] * dNdr2[l] + invJ[0][2];
+                        Float dNdy = invJ[1][0] * dNdr1[l] +
+                                     invJ[1][1] * dNdr2[l] + invJ[1][2];
+                        Float dNdz = invJ[2][0] * dNdr1[l] +
+                                     invJ[2][1] * dNdr2[l] + invJ[2][2];
+
+                        B[0][3 * l] = dNdx;
+                        B[1][3 * l] = 0.0;
+                        B[2][3 * l] = 0.0;
+                        B[3][3 * l] = dNdy;
+                        B[4][3 * l] = 0.0;
+                        B[5][3 * l] = dNdz;
+                        B[0][3 * l + 1] = 0.0;
+                        B[1][3 * l + 1] = dNdy;
+                        B[2][3 * l + 1] = 0.0;
+                        B[3][3 * l + 1] = dNdx;
+                        B[4][3 * l + 1] = dNdz;
+                        B[5][3 * l + 1] = 0.0;
+                        B[0][3 * l + 2] = 0.0;
+                        B[1][3 * l + 2] = 0.0;
+                        B[2][3 * l + 2] = dNdz;
+                        B[3][3 * l + 2] = 0.0;
+                        B[4][3 * l + 2] = dNdy;
+                        B[5][3 * l + 2] = dNdx;
+
+                        BT[3 * l][0] = dNdx;
+                        BT[3 * l][1] = 0.0;
+                        BT[3 * l][2] = 0.0;
+                        BT[3 * l][3] = dNdy;
+                        BT[3 * l][4] = 0.0;
+                        BT[3 * l][5] = dNdz;
+                        BT[3 * l + 1][0] = 0.0;
+                        BT[3 * l + 1][1] = dNdy;
+                        BT[3 * l + 1][2] = 0.0;
+                        BT[3 * l + 1][3] = dNdx;
+                        BT[3 * l + 1][4] = dNdz;
+                        BT[3 * l + 1][5] = 0.0;
+                        BT[3 * l + 2][0] = 0.0;
+                        BT[3 * l + 2][1] = 0.0;
+                        BT[3 * l + 2][2] = dNdz;
+                        BT[3 * l + 2][3] = 0.0;
+                        BT[3 * l + 2][4] = dNdy;
+                        BT[3 * l + 2][5] = dNdx;
+                    }
+                    // stiffness matrix
+                    std::vector<std::vector<Float>> tmp(6,
+                                                        std::vector<Float>(6));
+                    std::vector<std::vector<Float>> k(24,
+                                                      std::vector<Float>(24));
+                    std::vector<std::vector<Float>> K(
+                        3 * u * v * w, std::vector<Float>(3 * u * v * w));
+
+                    for (int l = 0; l < 24; l++) {
+                        for (int m = 0; m < 6; m++) {
+                            for (int n = 0; n < 6; n++) {
+                                tmp[l][m] += det * BT[l][n] * D[n][m];
+                            }
+                        }
+                    }
+                    for (int l = 0; l < 24; l++) {
+                        for (int m = 0; m < 24; m++) {
+                            for (int n = 0; n < 6; n++) {
+                                k[l][m] += tmp[l][n] * B[n][m];
+                            }
+                        }
+                    }
+
+                    for (int l = 0; l < 24; l++) {
+                        for (int m = 0; m < 24; m++) {
+                            K[8 * index[l / 3] + l % 3]
+                             [8 * index[m / 3] + m % 3] = k[l][m];
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ltype = 1  BX: BODY FORCE IN X-DIRECTION
+    // ltype = 2  BY: BODY FORCE IN Y-DIRECTION
+    // ltype = 3  BZ: BODY FORCE IN Z-DIRECTION
+    // ltype = 10 P1: TRACTIOM IN NORMAL-DIRECTION FOR FACE-1
+    // ltype = 20 P2: TRACTIOM IN NORMAL-DIRECTION FOR FACE-2
+    // ltype = 30 P3: TRACTIOM IN NORMAL-DIRECTION FOR FACE-3
+    // ltype = 40 P4: TRACTIOM IN NORMAL-DIRECTION FOR FACE-4
+    // ltype = 50 P5: TRACTIOM IN NORMAL-DIRECTION FOR FACE-5
+    // ltype = 60 P6: TRACTIOM IN NORMAL-DIRECTION FOR FACE-6
+    std::vector<Float> F(3 * u * v * w, 0);
+    for (std::vector<int> index : indices) {
+        int ltype = 10;
+        bool issuf = false;
+        std::vector<int> nL(4), nI(4);
+        if (ltype < 10) {
+            issuf = false;
+        } else {
+            issuf = true;
         };
-  
-	std::vector<Vector3f> dNdr;
-	
-	for (int i = 0; i < 8; i++) {
-		
-        }
 
+        if (issuf) {
+            switch (ltype) {
+            case 10:
+                nL = {index[0], index[1], index[2], index[3]};
+                nI = {0, 1, 2, 3};
+            case 20:
+                nL = {index[7], index[6], index[5], index[4]};
+                nI = {7, 6, 5, 4};
+            case 30:
+                nL = {index[4], index[5], index[1], index[0]};
+                nI = {4, 5, 1, 0};
+            case 40:
+                nL = {index[5], index[6], index[2], index[1]};
+                nI = {5, 6, 2, 1};
+            case 50:
+                nL = {index[6], index[7], index[3], index[2]};
+                nI = {6, 7, 3, 2};
+            case 60:
+                nL = {index[7], index[4], index[0], index[3]};
+                nI = {7, 4, 0, 3};
+            default:
+                break;
+            }
+            for (int i = 0; i < 2; i++) {
+                r1 = xg[i];
+                for (int j = 0; j < 2; i++) {
+                    r2 = xg[j];
+                    r1p = 1 + r1;
+                    r2p = 1 + r2;
+                    r1m = 1 - r1;
+                    r2m = 1 - r2;
+                    // interpolation function
+                    N[0] = r1m * r2m / 4.0;
+                    N[1] = r1p * r2m / 4.0;
+                    N[2] = r1p * r2p / 4.0;
+                    N[3] = r1m * r2p / 4.0;
+                    // derivative of interpolation function for r1
+                    dNdr1[0] = -r2m / 4.0;
+                    dNdr1[1] = r2m / 4.0;
+                    dNdr1[2] = r2p / 4.0;
+                    dNdr1[3] = -r2p / 4.0;
+                    // derivative of interpolation function for r2
+                    dNdr2[0] = -r1m / 4.0;
+                    dNdr2[1] = -r1m / 4.0;
+                    dNdr2[2] = r1p / 4.0;
+                    dNdr2[3] = r1p / 4.0;
+                    // G1,G2
+                    std::vector<Float> g1 = {0.0, 0.0, 0.0};
+                    std::vector<Float> g2 = {0.0, 0.0, 0.0};
+                    for (int _k = 0; _k < 4; _k++) {
+                        for (int l = 0; l < 3; l++) {
+                            g1[l] += dNdr1[_k] * vertices[nL[_k]][l];
+                            g2[l] += dNdr2[_k] * vertices[nL[_k]][l];
+                        }
+                    }
+                    std::vector<Float> g3 = {g1[1] * g2[2] - g1[2] * g2[1],
+                                             g1[2] * g2[0] - g1[0] * g2[2],
+                                             g1[0] * g2[1] - g1[1] * g2[0]};
+                    // Jacobi Matrix
+                    std::vector<std::vector<Float>> J = {g1, g2, g3};
+                    Float det = 0.0;
+                    det = J[0][0] * J[1][1] * J[2][2] +
+                          J[1][0] * J[2][1] * J[0][2] +
+                          J[2][0] * J[0][1] * J[1][2] -
+                          J[2][0] * J[1][1] * J[0][2] -
+                          J[1][0] * J[0][1] * J[2][2] -
+                          J[0][0] * J[2][1] * J[1][2];
 
-
-    for (auto index : indices) {
-        
-
-        // 要素剛性マトリクスの計算
-        for (int i = 0; i < 6; i++) {
-            for (int j = 0; j < 3; j++) {
-                for (int _k = 0; _k < 3; _k++) {
-                    tmp[i, j] += BT[i, _k] * D[_k, j];
+                    Float weight = det;
+                    for (int l = 0; l < 4; l++) {
+                        F[3 * nL[l]] += val /*strength of traction*/ * weight *
+                                        N[l] * g3[0];
+                        F[3 * nL[l] + 1] += val /*strength of traction*/ *
+                                            weight * N[l] * g3[1];
+                        F[3 * nL[l] + 2] += val /*strength of traction*/ *
+                                            weight * N[l] * g3[2];
+                    }
                 }
             }
         }
-
-        for (int i = 0; i < 6; i++) {
-            for (int j = 0; j < 6; j++) {
-                for (int _k = 0; _k < 3; _k++) {
-                    k[i, j] += tmp[i, _k] * B[_k, j];
-                }
+    }
+    // Ignore Body Force
+    for (int k = 0; k < 3 * u * v * w; ++k) {
+        double akk = A[k][k];
+        for (int i = k + 1; i < n; ++i) {
+            double aik = A[i][k];
+            for (int j = k; j < n + 1; ++j) {
+                A[i][j] = A[i][j] - aik * (A[k][j] / akk);
             }
         }
-
-        // 全体剛性マトリクスの導出
-        for (int i = 0; i < 6; i++) {
-            for (int j = 0; j < 6; j++) {
-                // Debug.Log(2 * index[i / 2] + i % 2);
-                // Debug.Log(2 * index[j / 2] + j % 2);
-                K[2 * index[i / 2] + i % 2, 2 * index[j / 2] + j % 2] = k[i, j];
-            }
+    }
+    A[n - 1][n] = A[n - 1][n] / A[n - 1][n - 1];
+    for (int i = n - 2; i >= 0; --i) {
+        double ax = 0.0;
+        for (int j = i + 1; j < n; ++j) {
+            ax += A[i][j] * A[j][n];
         }
-        // Debug.Log("Loop_End");
+        A[i][n] = (A[i][n] - ax) / A[i][i];
     }
 
     int[] pos_index = new int[2];
@@ -648,13 +918,10 @@ std::vector<std::vector<std::vector<Matrix4x4>>> SimpleModel::CalculateStress(
 }
 
 std::vector<std::shared_ptr<Shape>> CreateSimpleModelShape(
-    const Transform *o2w,
-    const Transform *w2o,
-    bool reverseOrientation,
+    const Transform *o2w, const Transform *w2o, bool reverseOrientation,
     const ParamSet &params,
     std::map<std::string, std::shared_ptr<Texture<Float>>> *floatTextures) {
-    
-	int nvi, npi, nuvi, nsi, nni;
+    int nvi, npi, nuvi, nsi, nni;
 
     Float width = params.FindOneFloat("width", 1.0);
     Float height = params.FindOneFloat("height", 1.0);
@@ -665,24 +932,13 @@ std::vector<std::shared_ptr<Shape>> CreateSimpleModelShape(
     int w = params.FindOneFloat("w", (int)depth / h);
     const int nTriangles = 12;
     const int vertexIndices[3 * nTriangles] = {
-        0, 1, 2,
-		0, 2, 3,
-		1, 5, 6,
-		1, 6, 2,
-		5, 4, 7,
-		5, 7, 6,
-        4, 0, 3,
-		4, 3, 7,
-		0, 5, 1,
-		0, 4, 5,
-		3, 2, 6,
-		3, 6, 7
-	};
+        0, 1, 2, 0, 2, 3, 1, 5, 6, 1, 6, 2, 5, 4, 7, 5, 7, 6,
+        4, 0, 3, 4, 3, 7, 0, 5, 1, 0, 4, 5, 3, 2, 6, 3, 6, 7};
     const int nVertices = 8;
 
-	const int *vi = params.FindInt("indices", &nvi);
-	const Point3f *P = params.FindPoint3f("P", &npi);
-	const Point2f *uvs = params.FindPoint2f("uv", &nuvi);
+    const int *vi = params.FindInt("indices", &nvi);
+    const Point3f *P = params.FindPoint3f("P", &npi);
+    const Point2f *uvs = params.FindPoint2f("uv", &nuvi);
     if (!uvs) uvs = params.FindPoint2f("st", &nuvi);
     std::vector<Point2f> tempUVs;
     if (!uvs) {
@@ -769,8 +1025,9 @@ std::vector<std::shared_ptr<Shape>> CreateSimpleModelShape(
     } else if (params.FindOneFloat("shadowalpha", 1.f) == 0.f)
         shadowAlphaTex.reset(new ConstantTexture<Float>(0.f));
 
-    return CreateTriangleMesh(o2w, w2o, reverseOrientation, nTriangles, vertexIndices, nVertices,
-		 P, S, N, uvs, alphaTex, shadowAlphaTex, faceIndices);
+    return CreateTriangleMesh(o2w, w2o, reverseOrientation, nTriangles,
+                              vertexIndices, nVertices, P, S, N, uvs, alphaTex,
+                              shadowAlphaTex, faceIndices);
 }
 
 }  // namespace pbrt
