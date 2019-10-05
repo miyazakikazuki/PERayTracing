@@ -578,7 +578,7 @@ std::vector<std::vector<std::vector<Matrix4x4>>> SimpleModel::CalculateStress(
         {d, d, c, 0.0, 0.0, 0.0},     {0.0, 0.0, 0.0, e, 0.0, 0.0},
         {0.0, 0.0, 0.0, 0.0, e, 0.0}, {0.0, 0.0, 0.0, 0.0, 0.0, e}};
 
-    std::vector<Float> F;
+    std::vector<Float> F(3 * u * v * w);
     std::vector<std::vector<std::vector<Matrix4x4>>> result;
     std::vector<Float> N, dNdr1, dNdr2, dNdr3;
     Float r1, r2, r3, r1p, r2p, r3p, r1m, r2m, r3m;
@@ -783,7 +783,6 @@ std::vector<std::vector<std::vector<Matrix4x4>>> SimpleModel::CalculateStress(
     // ltype = 40 P4: TRACTIOM IN NORMAL-DIRECTION FOR FACE-4
     // ltype = 50 P5: TRACTIOM IN NORMAL-DIRECTION FOR FACE-5
     // ltype = 60 P6: TRACTIOM IN NORMAL-DIRECTION FOR FACE-6
-    std::vector<Float> F(3 * u * v * w, 0);
     for (std::vector<int> index : indices) {
         int ltype = 10;
         bool issuf = false;
@@ -876,44 +875,200 @@ std::vector<std::vector<std::vector<Matrix4x4>>> SimpleModel::CalculateStress(
         }
     }
     // Ignore Body Force
-    for (int k = 0; k < 3 * u * v * w; ++k) {
-        double akk = A[k][k];
+
+    // Gaussian Elimination
+    int n = 3 * u * v * w;
+    for (int k = 0; k < n; ++k) {
+        double Kkk = K[k][k];
         for (int i = k + 1; i < n; ++i) {
-            double aik = A[i][k];
+            double Kik = K[i][k];
             for (int j = k; j < n + 1; ++j) {
-                A[i][j] = A[i][j] - aik * (A[k][j] / akk);
+                K[i][j] = K[i][j] - Kik * (K[k][j] / Kkk);
             }
+            F[i] = F[i] - Kik * (F[i] / Kkk);
         }
     }
-    A[n - 1][n] = A[n - 1][n] / A[n - 1][n - 1];
+    F[n] = F[n] / K[n - 1][n - 1];
     for (int i = n - 2; i >= 0; --i) {
         double ax = 0.0;
         for (int j = i + 1; j < n; ++j) {
-            ax += A[i][j] * A[j][n];
+            ax += K[i][j] * F[j];
         }
-        A[i][n] = (A[i][n] - ax) / A[i][i];
+        F[i] = (F[i] - ax) / K[i][i];
     }
 
-    int[] pos_index = new int[2];
-    // 全体荷重ベクトルの計算
-    for (int i = 0; i < pos.Length; i++) {
-        pos_index[0] = (int)pos[i].x * (div - 1);
-        pos_index[1] = (int)pos[i].y * (div - 1);
+    for (std::vector<int> index : indices) {
+        for (int i = 0; i < 2; i++) {
+            r1 = xg[i];
+            for (int j = 0; j < 2; i++) {
+                r2 = xg[j];
+                for (int _k = 0; _k < 2; _k++) {
+                    r3 = xg[_k];
+                    r1p = 1 + r1;
+                    r2p = 1 + r2;
+                    r3p = 1 + r3;
+                    r1m = 1 - r1;
+                    r2m = 1 - r2;
+                    r3m = 1 - r3;
+                    // interpolation function
+                    N[0] = r1m * r2m * r3m / 8.0;
+                    N[1] = r1p * r2m * r3m / 8.0;
+                    N[2] = r1p * r2p * r3m / 8.0;
+                    N[3] = r1m * r2p * r3m / 8.0;
+                    N[4] = r1m * r2m * r3p / 8.0;
+                    N[5] = r1p * r2m * r3p / 8.0;
+                    N[6] = r1p * r2p * r3p / 8.0;
+                    N[7] = r1m * r2p * r3p / 8.0;
+                    // derivative of interpolation function for r1
+                    dNdr1[0] = -r2m * r3m / 8.0;
+                    dNdr1[1] = r2m * r3m / 8.0;
+                    dNdr1[2] = r2p * r3m / 8.0;
+                    dNdr1[3] = -r2p * r3m / 8.0;
+                    dNdr1[4] = -r2m * r3p / 8.0;
+                    dNdr1[5] = r2m * r3p / 8.0;
+                    dNdr1[6] = r2p * r3p / 8.0;
+                    dNdr1[7] = -r2p * r3p / 8.0;
+                    // derivative of interpolation function for r2
+                    dNdr2[0] = -r1m * r3m / 8.0;
+                    dNdr2[1] = -r1m * r3m / 8.0;
+                    dNdr2[2] = r1p * r3m / 8.0;
+                    dNdr2[3] = r1p * r3m / 8.0;
+                    dNdr2[4] = -r1m * r3p / 8.0;
+                    dNdr2[5] = -r1m * r3p / 8.0;
+                    dNdr2[6] = r1p * r3p / 8.0;
+                    dNdr2[7] = r1p * r3p / 8.0;
+                    // derivative of interpolation function for r3
+                    dNdr1[0] = -r2m * r1m / 8.0;
+                    dNdr1[1] = -r2m * r1m / 8.0;
+                    dNdr1[2] = -r2p * r1m / 8.0;
+                    dNdr1[3] = -r2p * r1m / 8.0;
+                    dNdr1[4] = r2m * r1p / 8.0;
+                    dNdr1[5] = r2m * r1p / 8.0;
+                    dNdr1[6] = r2p * r1p / 8.0;
+                    dNdr1[7] = r2p * r1p / 8.0;
+                    // Jacobi Matrix
+                    std::vector<std::vector<Float>> J = {
+                        {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}};
+                    for (int l = 0; l < 8; l++) {
+                        J[0][0] += dNdr1[l] * vertices[index[l]][0];
+                        J[0][1] += dNdr1[l] * vertices[index[l]][1];
+                        J[0][2] += dNdr1[l] * vertices[index[l]][2];
+                        J[1][0] += dNdr1[l] * vertices[index[l]][0];
+                        J[1][1] += dNdr1[l] * vertices[index[l]][1];
+                        J[1][2] += dNdr1[l] * vertices[index[l]][2];
+                        J[2][0] += dNdr1[l] * vertices[index[l]][0];
+                        J[2][1] += dNdr1[l] * vertices[index[l]][1];
+                        J[2][2] += dNdr1[l] * vertices[index[l]][2];
+                    }
+                    // inverse matrix to J
+                    std::vector<std::vector<Float>> invJ;
 
-        F[2 * (pos_index[0] * div + pos_index[1])] = stress[i].x;
-        F[2 * (pos_index[0] * div + pos_index[1]) + 1] = stress[i].y;
+                    for (int l = 0; l < 3; l++) {
+                        for (int m = 0; m < 3; m++) {
+                            invJ[l][m] = (l == m) ? 1.0 : 0.0;
+                        }
+                    }
+                    Float buf;
+                    std::vector<std::vector<Float>> tmpJ = {
+                        {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}};
+                    for (int l = 0; l < 3; l++) {
+                        for (int m = 0; m < 3; m++) {
+                            tmpJ[l][m] = J[l][m];
+                        }
+                    }
+
+                    for (int l = 0; l < 3; l++) {
+                        buf = 1 / tmpJ[l][l];
+                        for (int m = 0; m < 3; m++) {
+                            tmpJ[l][m] *= buf;
+                            invJ[l][m] *= buf;
+                        }
+                        for (int m = 0; m < 3; m++) {
+                            if (l != m) {
+                                buf = tmpJ[m][l];
+                                for (int n = 0; n < 3; n++) {
+                                    tmpJ[m][n] -= tmpJ[l][n] * buf;
+                                    invJ[m][n] -= invJ[l][n] * buf;
+                                }
+                            }
+                        }
+                    }
+                    // determinant of J
+                    Float det = 0.0;
+                    det = J[0][0] * J[1][1] * J[2][2] +
+                          J[1][0] * J[2][1] * J[0][2] +
+                          J[2][0] * J[0][1] * J[1][2] -
+                          J[2][0] * J[1][1] * J[0][2] -
+                          J[1][0] * J[0][1] * J[2][2] -
+                          J[0][0] * J[2][1] * J[1][2];
+
+                    // B and its transpose matrix
+                    std::vector<std::vector<Float>> B(6,
+                                                      std::vector<Float>(24));
+                    std::vector<std::vector<Float>> BT(24,
+                                                       std::vector<Float>(6));
+
+                    for (int l = 0; l < 8; l++) {
+                        Float dNdx = invJ[0][0] * dNdr1[l] +
+                                     invJ[0][1] * dNdr2[l] + invJ[0][2];
+                        Float dNdy = invJ[1][0] * dNdr1[l] +
+                                     invJ[1][1] * dNdr2[l] + invJ[1][2];
+                        Float dNdz = invJ[2][0] * dNdr1[l] +
+                                     invJ[2][1] * dNdr2[l] + invJ[2][2];
+
+                        B[0][3 * l] = dNdx;
+                        B[1][3 * l] = 0.0;
+                        B[2][3 * l] = 0.0;
+                        B[3][3 * l] = dNdy;
+                        B[4][3 * l] = 0.0;
+                        B[5][3 * l] = dNdz;
+                        B[0][3 * l + 1] = 0.0;
+                        B[1][3 * l + 1] = dNdy;
+                        B[2][3 * l + 1] = 0.0;
+                        B[3][3 * l + 1] = dNdx;
+                        B[4][3 * l + 1] = dNdz;
+                        B[5][3 * l + 1] = 0.0;
+                        B[0][3 * l + 2] = 0.0;
+                        B[1][3 * l + 2] = 0.0;
+                        B[2][3 * l + 2] = dNdz;
+                        B[3][3 * l + 2] = 0.0;
+                        B[4][3 * l + 2] = dNdy;
+                        B[5][3 * l + 2] = dNdx;
+
+                        BT[3 * l][0] = dNdx;
+                        BT[3 * l][1] = 0.0;
+                        BT[3 * l][2] = 0.0;
+                        BT[3 * l][3] = dNdy;
+                        BT[3 * l][4] = 0.0;
+                        BT[3 * l][5] = dNdz;
+                        BT[3 * l + 1][0] = 0.0;
+                        BT[3 * l + 1][1] = dNdy;
+                        BT[3 * l + 1][2] = 0.0;
+                        BT[3 * l + 1][3] = dNdx;
+                        BT[3 * l + 1][4] = dNdz;
+                        BT[3 * l + 1][5] = 0.0;
+                        BT[3 * l + 2][0] = 0.0;
+                        BT[3 * l + 2][1] = 0.0;
+                        BT[3 * l + 2][2] = dNdz;
+                        BT[3 * l + 2][3] = 0.0;
+                        BT[3 * l + 2][4] = dNdy;
+                        BT[3 * l + 2][5] = dNdx;
+                    }
+                    // stress matrix
+                    for (int l = 0; l < 6; l++) {
+                        for (int m = 0; m < 24; m++) {
+                            tmp[] = B[] * F[];
+                        }
+                    }
+                    for (int l = 0; l < 6; l++) {
+                        for (int m = 0; m < 6; m++) {
+                            result[] = D[] * tmp[];
+                        }
+                    }
+                }
+            }
+        }
     }
-
-    /*foreach (double element in K)
-    {
-            Debug.Log(element);
-    }*/
-    LUDecomposition lud = new LUDecomposition();
-
-    double[] solutionX = new double[2 * div * div];
-    solutionX = lud.Solve(K, F, 2 * div * div);
-    Debug.Log("Start");
-    lud.WriteVector(solutionX);
     return result;
 }
 

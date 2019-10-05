@@ -453,6 +453,9 @@ std::vector<std::shared_ptr<Shape>> MakeShapes(const std::string &name,
     else if (name == "hyperboloid")
         s = CreateHyperboloidShape(object2world, world2object,
                                    reverseOrientation, paramSet);
+    else if (name == "simplemodel")
+        s = CreateSinglemodelShape(object2world, world2object,
+                                   reverseOrientation, paramSet);
     if (s != nullptr) shapes.push_back(s);
 
     // Create multiple-_Shape_ types
